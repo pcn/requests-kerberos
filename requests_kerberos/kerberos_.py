@@ -8,15 +8,24 @@ import logging
 log = logging.getLogger(__name__)
 
 
-# NOTES:
-# If authentication fails, the server response will be passed to the user. This
-# is likely to be a 401. A 403 would indicate successful authentication with an
-# unauthorized user.
-# If the client requires mutual authentication (the default, similar to ssl
-# certificate validation in requests proper), an exception will be raised so
-# that the user does not have the opportunity to accept an untrusted response.
-# If they're okay without requiring mutual authentication, then they can
-# specify that when constructing their HTTPKerberosAuth object.
+# Different types of mutual authentication:
+#  with mutual_authentication set to REQUIRED, all responses will be
+#   authenticated with the exception of errors. Errors will have their contents
+#   and headers stripped. If a non-error response cannot be authenticated, a
+#   MutualAuthenticationError exception will be raised.
+#  **NOTE** at the moment, the way that requests resolves redirects does not
+#  currently support authenticating redirects. As such if you really want to
+#  require mutual authentication, you have to disallow redirects in your
+#  initial request: https://github.com/kennethreitz/requests/issues/1183
+# with mutual_authentication set to OPTIONAL, mutual authentication will be
+#   attempted if supported, and if supported and failed, a
+#   MutualAuthenticationError exception will be raised. Responses which do not
+#   support mutual authentication will be returned directly to the user.
+# with mutual_authentication set to DISABLED, mutual authentication will not be
+#   attempted, even if supported.
+REQUIRED = 1
+OPTIONAL = 2
+DISABLED = 3
 
 
 def _negotiate_value(response):
@@ -42,9 +51,9 @@ def _negotiate_value(response):
 class HTTPKerberosAuth(AuthBase):
     """Attaches HTTP GSSAPI/Kerberos Authentication to the given Request
     object."""
-    def __init__(self, require_mutual_auth=True):
+    def __init__(self, mutual_authentication=REQUIRED):
         self.context = None
-        self.require_mutual_auth = require_mutual_auth
+        self.mutual_authentication = mutual_authentication
 
     def generate_request_header(self, response):
         """
@@ -129,9 +138,10 @@ class HTTPKerberosAuth(AuthBase):
 
         log.debug("handle_other(): Handling: %d" % response.status_code)
         self.deregister(response)
-        if self.require_mutual_auth:
 
-            is_2xx = 200 <= response.status_code < 300
+        if self.mutual_authentication in (REQUIRED, OPTIONAL):
+
+            is_http_error = response.status_code >= 400
 
             if _negotiate_value(response) is not None:
                 log.debug("handle_other(): Authenticating the server")
@@ -144,20 +154,7 @@ class HTTPKerberosAuth(AuthBase):
                     raise MutualAuthenticationError("Unable to authenticate server")
                 log.debug("handle_other(): returning {0}".format(_r))
                 return _r
-            elif not is_2xx:
-                # If we received a non 2xx response without authentication
-                # information, return it.
-                # - This usually indicates a redirect or an error.
-                # - This can be questionable from a security perspective but is
-                # pragmatically necessary.
-                # - If we don't authenticate the redirect, why should we trust it?
-                # While it's possible for the client to initiate authentication,
-                # this is atypical and there's no guaranty that the server would
-                # support it for the given resource. --  many times (as with
-                # mod_auth_kerb in apache) servers issue redirects in such a
-                # context where there is no possibility of authenticating them.
-                # Server errors (e.g. 500 errors are also commonly
-                # unauthenticatable.
+            elif is_http_error or self.mutual_authentication == OPTIONAL:
                 log.error("handle_other(): Mutual authentication unavailable "
                           "on {0} response".format(response.status_code))
                 return response
