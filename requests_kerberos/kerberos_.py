@@ -134,6 +134,9 @@ class HTTPKerberosAuth(AuthBase):
         log.debug("handle_other(): Handling: %d" % response.status_code)
         self.deregister(response)
         if self.require_mutual_auth:
+
+            is_2xx = 200 <= response.status_code < 300
+
             if _negotiate_value(response) is not None:
                 log.debug("handle_other(): Authenticating the server")
                 _r = self.authenticate_server(response)
@@ -145,6 +148,23 @@ class HTTPKerberosAuth(AuthBase):
                     raise MutualAuthenticationError("Unable to authenticate server")
                 log.debug("handle_other(): returning {0}".format(_r))
                 return _r
+            elif not is_2xx:
+                # If we received a non 2xx response without authentication
+                # information, return it.
+                # - This usually indicates a redirect or an error.
+                # - This can be questionable from a security perspective but is
+                # pragmatically necessary.
+                # - If we don't authenticate the redirect, why should we trust it?
+                # While it's possible for the client to initiate authentication,
+                # this is atypical and there's no guaranty that the server would
+                # support it for the given resource. --  many times (as with
+                # mod_auth_kerb in apache) servers issue redirects in such a
+                # context where there is no possibility of authenticating them.
+                # Server errors (e.g. 500 errors are also commonly
+                # unauthenticatable.
+                log.error("handle_other(): Mutual authentication unavailable "
+                          "on {0} response".format(response.status_code))
+                return response
             else:
                 # Unable to attempt mutual authentication when mutual auth is
                 # required, raise an exception so the user doesnt use an
