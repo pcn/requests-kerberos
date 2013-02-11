@@ -6,7 +6,10 @@
 from mock import Mock, patch
 import requests
 import requests_kerberos
-import unittest
+try:
+    import unittest2 as unittest
+except LoadError:
+    import unittest
 
 # kerberos.authClientInit() is called with the service name (HTTP@FQDN) and
 # returns 1 and a kerberos context object on success. Returns -1 on failure.
