@@ -1,10 +1,14 @@
-from requests.auth import AuthBase
-from requests.models import Response
-from requests.compat import urlparse, StringIO
-from .exceptions import MutualAuthenticationError
 import kerberos
 import re
 import logging
+
+from requests.auth import AuthBase
+from requests.models import Response
+from requests.compat import urlparse, StringIO
+from requests.structures import CaseInsensitiveDict
+from requests.cookies import cookiejar_from_dict
+
+from .exceptions import MutualAuthenticationError
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +28,7 @@ REQUIRED = 1
 OPTIONAL = 2
 DISABLED = 3
 
+
 class SanitizedResponse(Response):
     """The :class:`Response <Response>` object, which contains a server's
     response to an HTTP request.
@@ -40,13 +45,14 @@ class SanitizedResponse(Response):
         self.raw = response.raw
         self.reason = response.reason
         self.url = response.url
-        self.cookies = response.cookies
         self.request = response.request
         self.connection = response.connection
         self._content_consumed = True
 
         self._content = ""
-        self.headers = {'content-length': '0'}
+        self.cookies = cookiejar_from_dict({})
+        self.headers = CaseInsensitiveDict()
+        self.headers['content-length'] = '0'
         for header in ('date', 'server'):
             if header in response.headers:
                 self.headers[header] = response.headers[header]
