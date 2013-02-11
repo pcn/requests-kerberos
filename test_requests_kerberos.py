@@ -6,10 +6,11 @@
 from mock import Mock, patch
 import requests
 import requests_kerberos
-try:
-    import unittest2 as unittest
-except LoadError:
-    import unittest
+# try:
+    # import unittest2 as unittest
+# except LoadError:
+    # import unittest
+import unittest
 
 # kerberos.authClientInit() is called with the service name (HTTP@FQDN) and
 # returns 1 and a kerberos context object on success. Returns -1 on failure.
@@ -57,9 +58,8 @@ class KerberosTestCase(unittest.TestCase):
     def test_negotate_value_extraction_none(self):
         response = requests.Response()
         response.headers = {}
-        self.assertIs(
-            requests_kerberos.kerberos_._negotiate_value(response),
-            None
+        self.assertTrue(
+            requests_kerberos.kerberos_._negotiate_value(response) is None
         )
 
     def test_generate_request_header(self):
@@ -142,7 +142,7 @@ class KerberosTestCase(unittest.TestCase):
             auth = requests_kerberos.HTTPKerberosAuth()
             r = auth.authenticate_user(response)
 
-            self.assertIn(response, r.history)
+            self.assertTrue(response in r.history)
             self.assertEqual(r, response_ok)
             self.assertEqual(request.headers['Authorization'], 'Negotiate GSSRESPONSE')
             connection.send.assert_called_with(request)
@@ -181,7 +181,7 @@ class KerberosTestCase(unittest.TestCase):
             auth = requests_kerberos.HTTPKerberosAuth()
             r = auth.handle_401(response)
 
-            self.assertIn(response, r.history)
+            self.assertTrue(response in r.history)
             self.assertEqual(r, response_ok)
             self.assertEqual(request.headers['Authorization'], 'Negotiate GSSRESPONSE')
             connection.send.assert_called_with(request)
@@ -277,7 +277,7 @@ class KerberosTestCase(unittest.TestCase):
             auth = requests_kerberos.HTTPKerberosAuth()
             r = auth.handle_response(response)
 
-            self.assertIn(response, r.history)
+            self.assertTrue(response in r.history)
             self.assertEqual(r, response_ok)
             self.assertEqual(request.headers['Authorization'], 'Negotiate GSSRESPONSE')
             connection.send.assert_called_with(request)
