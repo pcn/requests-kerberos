@@ -18,6 +18,10 @@ log = logging.getLogger(__name__)
 #   authenticated with the exception of errors. Errors will have their contents
 #   and headers stripped. If a non-error response cannot be authenticated, a
 #   MutualAuthenticationError exception will be raised.
+#  **NOTE** at the moment, the way that requests resolves redirects does not
+#  support authenticating redirects. As such if you really want to require
+#  mutual authentication, you have to disallow redirects in your initial
+#  request: https://github.com/kennethreitz/requests/issues/1183
 # with mutual_authentication set to OPTIONAL, mutual authentication will be
 #   attempted if supported, and if supported and failed, a
 #   MutualAuthenticationError exception will be raised. Responses which do not
