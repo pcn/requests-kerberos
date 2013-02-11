@@ -96,8 +96,7 @@ class HTTPKerberosAuth(AuthBase):
 
         try:
             result, self.context[host] = kerberos.authGSSClientInit(
-                    "HTTP@{0}".format(host)
-            )
+                "HTTP@{0}".format(host))
         except kerberos.GSSError as e:
             log.error("generate_request_header(): authGSSClientInit() failed:")
             log.exception(e)
@@ -137,7 +136,8 @@ class HTTPKerberosAuth(AuthBase):
             auth_header))
         response.request.headers['Authorization'] = auth_header
 
-        # Consume the content so we can reuse the connection for the next request.
+        # Consume the content so we can reuse the connection for the next
+        # request.
         response.content
         response.raw.release_conn()
 
@@ -173,16 +173,18 @@ class HTTPKerberosAuth(AuthBase):
 
             if _negotiate_value(response) is not None:
                 log.debug("handle_other(): Authenticating the server")
-                _r = self.authenticate_server(response)
-                if _r is None:
+                if not self.authenticate_server(response):
                     # Mutual authentication failure when mutual auth is wanted,
                     # raise an exception so the user doesn't use an untrusted
                     # response.
                     log.error("handle_other(): Mutual authentication failed")
                     raise MutualAuthenticationError("Unable to authenticate "
                                                     "{0}".format(response))
-                log.debug("handle_other(): returning {0}".format(_r))
-                return _r
+
+                # Authentication successful
+                log.debug("handle_other(): returning {0}".format(response))
+                return response
+
             elif is_http_error or self.mutual_authentication == OPTIONAL:
                 log.error("handle_other(): Mutual authentication unavailable "
                           "on {0} response".format(response.status_code))
@@ -206,24 +208,23 @@ class HTTPKerberosAuth(AuthBase):
         """
         Uses GSSAPI to authenticate the server.
 
-        Returns None on any GSSAPI failure.
+        Returns True on success, False on failure.
         """
 
         log.debug("authenticate_server(): Authenticate header: {0}".format(
-                _negotiate_value(response)))  # nopep8
+            _negotiate_value(response)))
 
         host = urlparse(response.url).netloc
 
         result = kerberos.authGSSClientStep(self.context[host],
-                                            _negotiate_value(response)
-        )
+                                            _negotiate_value(response))
         if result < 1:
             log.error("auhenticate_server(): authGSSClientStep() failed: "
                       "{0}".format(result))
-            return None
+            return False
 
         log.debug("authenticate_server(): returning {0}".format(response))
-        return response
+        return True
 
     def handle_response(self, response):
         """Takes the given response and tries kerberos-auth, as needed."""
@@ -236,7 +237,6 @@ class HTTPKerberosAuth(AuthBase):
             _r = self.handle_other(response)
             log.debug("handle_response(): returning {0}".format(_r))
             return _r
-
 
     def deregister(self, response):
         """Deregisters the response handler"""
