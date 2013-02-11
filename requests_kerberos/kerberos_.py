@@ -1,10 +1,26 @@
 from requests.auth import AuthBase
 from requests.compat import urlparse
+from requests.exceptions import RequestException
 import kerberos
 import re
 import logging
 
 log = logging.getLogger(__name__)
+
+
+# NOTES:
+# If authentication fails, the server response will be passed to the user. This
+# is likely to be a 401. A 403 would indicate successful authentication with an
+# unauthorized user.
+# If the client requires mutual authentication (the default, similar to ssl
+# certificate validation in requests proper), an exception will be raised so
+# that the user does not have the opportunity to accept an untrusted response.
+# If they're okay without requiring mutual authentication, then they can
+# specify that when constructing their HTTPKerberosAuth object.
+
+
+class MutualAuthenticationError(RequestException):
+    """Mutual Authentication Error"""
 
 
 def _negotiate_value(response):
@@ -35,22 +51,41 @@ class HTTPKerberosAuth(AuthBase):
         self.require_mutual_auth = require_mutual_auth
 
     def generate_request_header(self, response):
-        """Generates the gssapi authentication token with kerberos"""
+        """
+        Generates the GSSAPI authentication token with kerberos.
+
+        If any GSSAPI step fails, return None.
+
+        """
         host = urlparse(response.url).netloc
         tail, _, head = host.rpartition(':')
         domain = tail if tail else head
 
-        result, self.context = kerberos.authGSSClientInit("HTTP@{0}".format(
-            domain))
+        try:
+            result, self.context = kerberos.authGSSClientInit("HTTP@{0}".format(
+                domain))
+        except kerberos.GSSError as e:
+            log.error("generate_request_header(): authGSSClientInit() failed:")
+            log.exception(e)
+            return None
 
         if result < 1:
-            raise Exception("authGSSClientInit failed")
+            log.error("generate_request_header(): authGSSClientInit() failed: "
+                      "{0}".format(result))
+            return None
 
-        result = kerberos.authGSSClientStep(self.context,
-                                            _negotiate_value(response))
+        try:
+            result = kerberos.authGSSClientStep(self.context,
+                                                _negotiate_value(response))
+        except kerberos.GSSError as e:
+            log.error("generate_request_header(): authGSSClientStep() failed:")
+            log.exception(e)
+            return None
 
         if result < 0:
-            raise Exception("authGSSClientStep failed")
+            log.error("generate_request_header(): authGSSClientStep() failed: "
+                      "{0}".format(result))
+            return None
 
         gss_response = kerberos.authGSSClientResponse(self.context)
 
@@ -60,6 +95,10 @@ class HTTPKerberosAuth(AuthBase):
         """Handles user authentication with gssapi/kerberos"""
 
         auth_header = self.generate_request_header(response)
+        if auth_header is None:
+            # GSS Failure, return existing response
+            return response
+
         log.debug("authenticate_user(): Authorization header: {0}".format(
             auth_header))
         response.request.headers['Authorization'] = auth_header
@@ -93,24 +132,40 @@ class HTTPKerberosAuth(AuthBase):
             if _negotiate_value(response) is not None:
                 log.debug("handle_other(): Authenticating the server")
                 _r = self.authenticate_server(response)
+                if _r is None:
+                    # Mutual authentication failure when mutual auth is
+                    # required, raise an exception so the user doesnt use an
+                    # untrusted response.
+                    log.error("handle_other(): Mutual authentication failed")
+                    raise MutualAuthenticationError("Unable to authenticate server")
                 log.debug("handle_other(): returning {0}".format(_r))
                 return _r
             else:
+                # Unable to attempt mutual authentication when mutual auth is
+                # required, raise an exception so the user doesnt use an
+                # untrusted response.
                 log.error("handle_other(): Mutual authentication failed")
-                raise Exception("Mutual authentication failed")
+                raise MutualAuthenticationError("Unable to authenticate server")
         else:
             log.debug("handle_other(): returning {0}".format(response))
             return response
 
     def authenticate_server(self, response):
-        """Uses GSSAPI to authenticate the server"""
+        """
+        Uses GSSAPI to authenticate the server.
+
+        Returns None on any GSSAPI failure.
+        """
 
         log.debug("authenticate_server(): Authenticate header: {0}".format(
                 _negotiate_value(response)))  # nopep8
         result = kerberos.authGSSClientStep(self.context,
                                             _negotiate_value(response))
-        if  result < 1:
-            raise Exception("authGSSClientStep failed")
+        if result < 1:
+            log.error("auhenticate_server(): authGSSClientStep() failed: "
+                      "{0}".format(result))
+            return None
+
         _r = response.request.response
         log.debug("authenticate_server(): returning {0}".format(_r))
         return _r

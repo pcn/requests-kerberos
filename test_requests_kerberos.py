@@ -84,9 +84,10 @@ class KerberosTestCase(unittest.TestCase):
             response.url = "http://www.example.org/"
             response.headers = {'www-authenticate': 'negotiate token'}
             auth = requests_kerberos.HTTPKerberosAuth()
-            self.assertRaises(Exception,
-                              auth.generate_request_header,
-                              response)
+            self.assertEqual(
+                auth.generate_request_header(response),
+                None
+            )
             clientInitError.assert_called_with("HTTP@www.example.org")
             clientStepContinue.assert_not_called()
             clientResponse.assert_not_called()
@@ -100,9 +101,10 @@ class KerberosTestCase(unittest.TestCase):
             response.url = "http://www.example.org/"
             response.headers = {'www-authenticate': 'negotiate token'}
             auth = requests_kerberos.HTTPKerberosAuth()
-            self.assertRaises(Exception,
-                              auth.generate_request_header,
-                              response)
+            self.assertEqual(
+                auth.generate_request_header(response),
+                None
+            )
             clientInitComplete.assert_called_with("HTTP@www.example.org")
             clientStepError.assert_called_with("CTX", "token")
             clientResponse.assert_not_called()

@@ -1,4 +1,5 @@
-from .kerberos_ import HTTPKerberosAuth
+from .kerberos_ import HTTPKerberosAuth, MutualAuthenticationError
 
-__all__ = [HTTPKerberosAuth]
+
+__all__ = [HTTPKerberosAuth, MutualAuthenticationError]
 __version__ = '0.1'
