@@ -179,14 +179,14 @@ class HTTPKerberosAuth(AuthBase):
 
         if response.status_code == 401:
             _r = self.handle_401(response)
-            log.debug("handle_response returning {0}".format(_r))
+            log.debug("handle_response(): returning {0}".format(_r))
             return _r
         else:
             _r = self.handle_other(response)
-            log.debug("handle_response returning {0}".format(_r))
+            log.debug("handle_response(): returning {0}".format(_r))
             return _r
 
-        log.debug("handle_response returning {0}".format(response))
+        log.debug("handle_response(): returning {0}".format(response))
         return response
 
     def deregister(self, response):
