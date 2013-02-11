@@ -1,5 +1,6 @@
 from requests.auth import AuthBase
-from requests.compat import urlparse
+from requests.models import Response
+from requests.compat import urlparse, StringIO
 from .exceptions import MutualAuthenticationError
 import kerberos
 import re
@@ -13,10 +14,6 @@ log = logging.getLogger(__name__)
 #   authenticated with the exception of errors. Errors will have their contents
 #   and headers stripped. If a non-error response cannot be authenticated, a
 #   MutualAuthenticationError exception will be raised.
-#  **NOTE** at the moment, the way that requests resolves redirects does not
-#  currently support authenticating redirects. As such if you really want to
-#  require mutual authentication, you have to disallow redirects in your
-#  initial request: https://github.com/kennethreitz/requests/issues/1183
 # with mutual_authentication set to OPTIONAL, mutual authentication will be
 #   attempted if supported, and if supported and failed, a
 #   MutualAuthenticationError exception will be raised. Responses which do not
@@ -26,6 +23,33 @@ log = logging.getLogger(__name__)
 REQUIRED = 1
 OPTIONAL = 2
 DISABLED = 3
+
+class SanitizedResponse(Response):
+    """The :class:`Response <Response>` object, which contains a server's
+    response to an HTTP request.
+
+    This differs from `requests.models.Response` in that it's headers and
+    content have been sanitized. This is only used for HTTP Error messages
+    which do not support mutual authentication when mutual authentication is
+    required."""
+
+    def __init__(self, response):
+        super(SanitizedResponse, self).__init__()
+        self.status_code = response.status_code
+        self.encoding = response.encoding
+        self.raw = response.raw
+        self.reason = response.reason
+        self.url = response.url
+        self.cookies = response.cookies
+        self.request = response.request
+        self.connection = response.connection
+        self._content_consumed = True
+
+        self._content = ""
+        self.headers = {'content-length': '0'}
+        for header in ('date', 'server'):
+            if header in response.headers:
+                self.headers[header] = response.headers[header]
 
 
 def _negotiate_value(response):
@@ -52,7 +76,7 @@ class HTTPKerberosAuth(AuthBase):
     """Attaches HTTP GSSAPI/Kerberos Authentication to the given Request
     object."""
     def __init__(self, mutual_authentication=REQUIRED):
-        self.context = None
+        self.context = {}
         self.mutual_authentication = mutual_authentication
 
     def generate_request_header(self, response):
@@ -63,12 +87,11 @@ class HTTPKerberosAuth(AuthBase):
 
         """
         host = urlparse(response.url).netloc
-        tail, _, head = host.rpartition(':')
-        domain = tail if tail else head
 
         try:
-            result, self.context = kerberos.authGSSClientInit("HTTP@{0}".format(
-                domain))
+            result, self.context[host] = kerberos.authGSSClientInit(
+                    "HTTP@{0}".format(host)
+            )
         except kerberos.GSSError as e:
             log.error("generate_request_header(): authGSSClientInit() failed:")
             log.exception(e)
@@ -80,7 +103,7 @@ class HTTPKerberosAuth(AuthBase):
             return None
 
         try:
-            result = kerberos.authGSSClientStep(self.context,
+            result = kerberos.authGSSClientStep(self.context[host],
                                                 _negotiate_value(response))
         except kerberos.GSSError as e:
             log.error("generate_request_header(): authGSSClientStep() failed:")
@@ -92,7 +115,7 @@ class HTTPKerberosAuth(AuthBase):
                       "{0}".format(result))
             return None
 
-        gss_response = kerberos.authGSSClientResponse(self.context)
+        gss_response = kerberos.authGSSClientResponse(self.context[host])
 
         return "Negotiate {0}".format(gss_response)
 
@@ -137,7 +160,6 @@ class HTTPKerberosAuth(AuthBase):
         This is necessary so that we can authenticate responses if requested"""
 
         log.debug("handle_other(): Handling: %d" % response.status_code)
-        self.deregister(response)
 
         if self.mutual_authentication in (REQUIRED, OPTIONAL):
 
@@ -147,23 +169,29 @@ class HTTPKerberosAuth(AuthBase):
                 log.debug("handle_other(): Authenticating the server")
                 _r = self.authenticate_server(response)
                 if _r is None:
-                    # Mutual authentication failure when mutual auth is
-                    # required, raise an exception so the user doesnt use an
-                    # untrusted response.
+                    # Mutual authentication failure when mutual auth is wanted,
+                    # raise an exception so the user doesn't use an untrusted
+                    # response.
                     log.error("handle_other(): Mutual authentication failed")
-                    raise MutualAuthenticationError("Unable to authenticate server")
+                    raise MutualAuthenticationError("Unable to authenticate "
+                                                    "{0}".format(response))
                 log.debug("handle_other(): returning {0}".format(_r))
                 return _r
             elif is_http_error or self.mutual_authentication == OPTIONAL:
                 log.error("handle_other(): Mutual authentication unavailable "
                           "on {0} response".format(response.status_code))
-                return response
+
+                if self.mutual_authentication == REQUIRED:
+                    return SanitizedResponse(response)
+                else:
+                    return response
             else:
                 # Unable to attempt mutual authentication when mutual auth is
                 # required, raise an exception so the user doesnt use an
                 # untrusted response.
                 log.error("handle_other(): Mutual authentication failed")
-                raise MutualAuthenticationError("Unable to authenticate server")
+                raise MutualAuthenticationError("Unable to authenticate "
+                                                "{0}".format(response))
         else:
             log.debug("handle_other(): returning {0}".format(response))
             return response
@@ -177,8 +205,12 @@ class HTTPKerberosAuth(AuthBase):
 
         log.debug("authenticate_server(): Authenticate header: {0}".format(
                 _negotiate_value(response)))  # nopep8
-        result = kerberos.authGSSClientStep(self.context,
-                                            _negotiate_value(response))
+
+        host = urlparse(response.url).netloc
+
+        result = kerberos.authGSSClientStep(self.context[host],
+                                            _negotiate_value(response)
+        )
         if result < 1:
             log.error("auhenticate_server(): authGSSClientStep() failed: "
                       "{0}".format(result))
@@ -199,8 +231,6 @@ class HTTPKerberosAuth(AuthBase):
             log.debug("handle_response(): returning {0}".format(_r))
             return _r
 
-        log.debug("handle_response(): returning {0}".format(response))
-        return response
 
     def deregister(self, response):
         """Deregisters the response handler"""
