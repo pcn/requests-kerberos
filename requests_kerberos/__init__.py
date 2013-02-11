@@ -10,11 +10,6 @@ authentication. Basic GET usage:
     >>> from requests_kerberos import HTTPKerberosAuth
     >>> r = requests.get("http://example.org", auth=HTTPKerberosAuth())
 
-... or without mutual authentication:
-
-    >>> r = requests.get("http://example.org", auth=HTTPKerberosAuth(require_mutual_auth=False))
-
-
 The entire `requests.api` should be supported.
 """
 from .kerberos_ import HTTPKerberosAuth, REQUIRED, OPTIONAL, DISABLED
