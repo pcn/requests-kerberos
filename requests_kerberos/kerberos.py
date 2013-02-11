@@ -13,8 +13,7 @@ def _negotiate_value(response):
         regex = _negotiate_value.regex
     else:
         # There's no need to re-compile this EVERY time it is called. Compile
-        # ile it once and you won't have the performance hit of the
-        # compilation.
+        # it once and you won't have the performance hit of the compilation.
         regex = re.compile('(?:.*,)*\s*Negotiate\s*([^,]*),?', re.I)
         _negotiate_value.regex = regex
 
