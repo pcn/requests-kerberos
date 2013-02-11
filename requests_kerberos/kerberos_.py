@@ -213,6 +213,6 @@ class HTTPKerberosAuth(AuthBase):
         """Deregisters the response handler"""
         response.request.deregister_hook('response', self.handle_response)
 
-    def __call__(self, response):
-        response.register_hook('response', self.handle_response)
-        return response
+    def __call__(self, request):
+        request.register_hook('response', self.handle_response)
+        return request
