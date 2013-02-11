@@ -17,8 +17,9 @@ authentication. Basic GET usage:
 
 The entire `requests.api` should be supported.
 """
-from .kerberos_ import HTTPKerberosAuth, MutualAuthenticationError
+from .kerberos_ import HTTPKerberosAuth, REQUIRED, OPTIONAL, DISABLED
+from .exceptions import MutualAuthenticationError
 
 
-__all__ = [HTTPKerberosAuth, MutualAuthenticationError]
+__all__ = [HTTPKerberosAuth, MutualAuthenticationError, REQUIRED, OPTIONAL, DISABLED]
 __version__ = '0.1'

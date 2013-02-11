@@ -1,6 +1,6 @@
 from requests.auth import AuthBase
 from requests.compat import urlparse
-from requests.exceptions import RequestException
+from .exceptions import MutualAuthenticationError
 import kerberos
 import re
 import logging
@@ -17,10 +17,6 @@ log = logging.getLogger(__name__)
 # that the user does not have the opportunity to accept an untrusted response.
 # If they're okay without requiring mutual authentication, then they can
 # specify that when constructing their HTTPKerberosAuth object.
-
-
-class MutualAuthenticationError(RequestException):
-    """Mutual Authentication Error"""
 
 
 def _negotiate_value(response):
