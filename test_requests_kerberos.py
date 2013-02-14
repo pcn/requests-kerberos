@@ -201,10 +201,10 @@ class KerberosTestCase(unittest.TestCase):
             }
 
             auth = requests_kerberos.HTTPKerberosAuth()
-            auth.context = "CTX"
-            r = auth.authenticate_server(response_ok)
+            auth.context = {"www.example.org": "CTX"}
+            result = auth.authenticate_server(response_ok)
 
-            self.assertEqual(r, response_ok)
+            self.assertTrue(result)
             clientStep_complete.assert_called_with("CTX", "servertoken")
 
 
@@ -219,13 +219,11 @@ class KerberosTestCase(unittest.TestCase):
             }
 
             auth = requests_kerberos.HTTPKerberosAuth()
-            auth.context = "CTX"
-            auth.deregister = Mock()
+            auth.context = {"www.example.org": "CTX"}
 
             r = auth.handle_other(response_ok)
 
             self.assertEqual(r, response_ok)
-            auth.deregister.assert_called_with(response_ok)
             clientStep_complete.assert_called_with("CTX", "servertoken")
 
     def test_handle_response_200(self):
@@ -239,13 +237,11 @@ class KerberosTestCase(unittest.TestCase):
             }
 
             auth = requests_kerberos.HTTPKerberosAuth()
-            auth.context = "CTX"
-            auth.deregister = Mock()
+            auth.context = {"www.example.org": "CTX"}
 
             r = auth.handle_response(response_ok)
 
             self.assertEqual(r, response_ok)
-            auth.deregister.assert_called_with(response_ok)
             clientStep_complete.assert_called_with("CTX", "servertoken")
 
     def test_handle_response_401(self):

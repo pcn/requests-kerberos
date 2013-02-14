@@ -128,7 +128,7 @@ class HTTPKerberosAuth(AuthBase):
 
         return "Negotiate {0}".format(gss_response)
 
-    def authenticate_user(self, response):
+    def authenticate_user(self, response, **kwargs):
         """Handles user authentication with gssapi/kerberos"""
 
         auth_header = self.generate_request_header(response)
@@ -145,18 +145,18 @@ class HTTPKerberosAuth(AuthBase):
         response.content
         response.raw.release_conn()
 
-        _r = response.connection.send(response.request)
+        _r = response.connection.send(response.request, **kwargs)
         _r.history.append(response)
 
         log.debug("authenticate_user(): returning {0}".format(_r))
         return _r
 
-    def handle_401(self, response):
+    def handle_401(self, response, **kwargs):
         """Handles 401's, attempts to use gssapi/kerberos authentication"""
 
         log.debug("handle_401(): Handling: 401")
         if _negotiate_value(response) is not None:
-            _r = self.authenticate_user(response)
+            _r = self.authenticate_user(response, **kwargs)
             log.debug("handle_401(): returning {0}".format(_r))
             return _r
         else:
@@ -230,11 +230,11 @@ class HTTPKerberosAuth(AuthBase):
         log.debug("authenticate_server(): returning {0}".format(response))
         return True
 
-    def handle_response(self, response):
+    def handle_response(self, response, **kwargs):
         """Takes the given response and tries kerberos-auth, as needed."""
 
         if response.status_code == 401:
-            _r = self.handle_401(response)
+            _r = self.handle_401(response, **kwargs)
             log.debug("handle_response(): returning {0}".format(_r))
             return _r
         else:
