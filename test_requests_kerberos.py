@@ -207,7 +207,6 @@ class KerberosTestCase(unittest.TestCase):
             self.assertTrue(result)
             clientStep_complete.assert_called_with("CTX", "servertoken")
 
-
     def test_handle_other(self):
         with patch('kerberos.authGSSClientStep', clientStep_complete):
 
@@ -243,6 +242,115 @@ class KerberosTestCase(unittest.TestCase):
 
             self.assertEqual(r, response_ok)
             clientStep_complete.assert_called_with("CTX", "servertoken")
+
+    def test_handle_response_200_mutual_auth_required_failure(self):
+        with patch('kerberos.authGSSClientStep', clientStep_error):
+
+            response_ok = requests.Response()
+            response_ok.url = "http://www.example.org/"
+            response_ok.status_code = 200
+            response_ok.headers = {}
+
+            auth = requests_kerberos.HTTPKerberosAuth()
+            auth.context = {"www.example.org": "CTX"}
+
+            self.assertRaises(requests_kerberos.MutualAuthenticationError,
+                              auth.handle_response,
+                              response_ok)
+
+            clientStep_error.assert_not_called()
+
+    def test_handle_response_200_mutual_auth_optional_hard_failure(self):
+        with patch('kerberos.authGSSClientStep', clientStep_error):
+
+            response_ok = requests.Response()
+            response_ok.url = "http://www.example.org/"
+            response_ok.status_code = 200
+            response_ok.headers = {'www-authenticate': 'negotiate servertoken',
+                                   'authorization': 'Negotiate GSSRESPONSE'
+            }
+
+            auth = requests_kerberos.HTTPKerberosAuth(requests_kerberos.OPTIONAL)
+            auth.context = {"www.example.org": "CTX"}
+
+
+            self.assertRaises(requests_kerberos.MutualAuthenticationError,
+                              auth.handle_response,
+                              response_ok)
+
+            clientStep_error.assert_called_with("CTX", "servertoken")
+
+
+    def test_handle_response_200_mutual_auth_optional_soft_failure(self):
+        with patch('kerberos.authGSSClientStep', clientStep_error):
+
+            response_ok = requests.Response()
+            response_ok.url = "http://www.example.org/"
+            response_ok.status_code = 200
+
+            auth = requests_kerberos.HTTPKerberosAuth(requests_kerberos.OPTIONAL)
+            auth.context = {"www.example.org": "CTX"}
+
+            r = auth.handle_response(response_ok)
+
+            self.assertEqual(r, response_ok)
+
+            clientStep_error.assert_not_called()
+    def test_handle_response_500_mutual_auth_required_failure(self):
+        with patch('kerberos.authGSSClientStep', clientStep_error):
+
+            response_500 = requests.Response()
+            response_500.url = "http://www.example.org/"
+            response_500.status_code = 500
+            response_500.headers = {}
+            response_500.request = "REQUEST"
+            response_500.connection = "CONNECTION"
+            response_500._content = "CONTENT"
+            response_500.encoding = "ENCODING"
+            response_500.raw = "RAW"
+            response_500.cookies = "COOKIES"
+
+            auth = requests_kerberos.HTTPKerberosAuth()
+            auth.context = {"www.example.org": "CTX"}
+
+            r = auth.handle_response(response_500)
+
+            self.assertNotEqual(r, response_500)
+            self.assertNotEqual(r.headers, response_500.headers)
+            self.assertEqual(r.status_code, response_500.status_code)
+            self.assertEqual(r.encoding, response_500.encoding)
+            self.assertEqual(r.raw, response_500.raw)
+            self.assertEqual(r.url, response_500.url)
+            self.assertEqual(r.reason, response_500.reason)
+            self.assertEqual(r.connection, response_500.connection)
+            self.assertEqual(r.content, b'')
+            self.assertNotEqual(r.cookies, response_500.cookies)
+
+            clientStep_error.assert_not_called()
+
+    def test_handle_response_500_mutual_auth_optional_failure(self):
+        with patch('kerberos.authGSSClientStep', clientStep_error):
+
+            response_500 = requests.Response()
+            response_500.url = "http://www.example.org/"
+            response_500.status_code = 500
+            response_500.headers = {}
+            response_500.request = "REQUEST"
+            response_500.connection = "CONNECTION"
+            response_500._content = "CONTENT"
+            response_500.encoding = "ENCODING"
+            response_500.raw = "RAW"
+            response_500.cookies = "COOKIES"
+
+            auth = requests_kerberos.HTTPKerberosAuth(requests_kerberos.OPTIONAL)
+            auth.context = {"www.example.org": "CTX"}
+
+            r = auth.handle_response(response_500)
+
+            self.assertEqual(r, response_500)
+
+            clientStep_error.assert_not_called()
+
 
     def test_handle_response_401(self):
         with patch.multiple('kerberos',
